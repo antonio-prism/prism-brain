@@ -1,18 +1,66 @@
 """
 PRISM Brain - Database Module
 =============================
-Handles all data persistence using SQLite.
+Handles all data persistence.
+Phase 2: Hybrid mode — tries backend API first, falls back to local SQLite.
 """
 
 import sqlite3
 import json
 import os
+import logging
 from datetime import datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Get the data directory path
 DATA_DIR = Path(__file__).parent.parent / "data"
 DB_PATH = DATA_DIR / "prism_brain.db"
+
+# --- Phase 2: Backend API integration ---
+# Try to import the API client for hybrid mode
+try:
+    from modules.api_client import (
+        check_backend_health,
+        api_create_client, api_get_all_clients, api_get_client,
+        api_update_client, api_delete_client,
+        api_add_process, api_get_processes, api_update_process, api_delete_process,
+        api_add_risk, api_get_risks, api_update_risk,
+        api_save_assessment, api_get_assessments, api_get_exposure_summary
+    )
+    API_CLIENT_AVAILABLE = True
+except ImportError:
+    API_CLIENT_AVAILABLE = False
+
+# Track backend availability (checked once per session, refreshed on demand)
+_backend_online = None
+
+
+def is_backend_online() -> bool:
+    """Check if the backend API is available. Caches result for the session."""
+    global _backend_online
+    if not API_CLIENT_AVAILABLE:
+        return False
+    if _backend_online is None:
+        try:
+            health = check_backend_health()
+            _backend_online = health.get('status') == 'healthy'
+        except Exception:
+            _backend_online = False
+    return _backend_online
+
+
+def refresh_backend_status():
+    """Force re-check of backend availability."""
+    global _backend_online
+    _backend_online = None
+    return is_backend_online()
+
+
+def get_data_source():
+    """Return 'backend' or 'local' depending on current mode."""
+    return 'backend' if is_backend_online() else 'local'
 
 
 def get_connection():
@@ -101,7 +149,7 @@ def init_database():
 
     # External data cache table
     cursor.execute('''
-        CREATE TABLE IF NOT EXISTS external_data_cache (
+            CREATE TABLE IF NOT EXISTS external_data_cache (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             source_name TEXT NOT NULL,
             category TEXT,
@@ -127,84 +175,132 @@ def init_database():
 def create_client(name, location="", industry="", revenue=0, employees=0,
                   currency="EUR", export_percentage=0, primary_markets="",
                   sectors="", notes=""):
-    """Create a new client."""
+    """Create a new client. Tries backend API first, falls back to local SQLite."""
+    if is_backend_online():
+        try:
+            result = api_create_client(name, location, industry, revenue,
+                                       employees, currency, export_percentage,
+                                       primary_markets, sectors, notes)
+            if result is not None:
+                logger.info(f"Client created on backend: {result}")
+                # Also create locally for offline access
+                _create_client_local(name, location, industry, revenue,
+                                     employees, currency, export_percentage,
+                                     primary_markets, sectors, notes)
+                return result
+        except Exception as e:
+            logger.warning(f"Backend create_client failed, using local: {e}")
+    return _create_client_local(name, location, industry, revenue, employees,
+                                currency, export_percentage, primary_markets,
+                                sectors, notes)
+
+
+def _create_client_local(name, location="", industry="", revenue=0, employees=0,
+                         currency="EUR", export_percentage=0, primary_markets="",
+                         sectors="", notes=""):
+    """Create a client in local SQLite."""
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute('''
         INSERT INTO clients (name, location, industry, revenue, employees,
                             currency, export_percentage, primary_markets, sectors, notes)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (name, location, industry, revenue, employees, currency,
           export_percentage, primary_markets, sectors, notes))
-
     client_id = cursor.lastrowid
     conn.commit()
     conn.close()
-
     return client_id
 
 
 def get_all_clients():
-    """Get all clients."""
+    """Get all clients. Tries backend API first."""
+    if is_backend_online():
+        try:
+            result = api_get_all_clients()
+            if result is not None:
+                return result
+        except Exception as e:
+            logger.warning(f"Backend get_all_clients failed, using local: {e}")
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute('SELECT * FROM clients ORDER BY updated_at DESC')
     clients = [dict(row) for row in cursor.fetchall()]
-
     conn.close()
     return clients
 
 
 def get_client(client_id):
-    """Get a specific client by ID."""
+    """Get a specific client by ID. Tries backend API first."""
+    if is_backend_online():
+        try:
+            result = api_get_client(client_id)
+            if result is not None:
+                return result
+        except Exception as e:
+            logger.warning(f"Backend get_client failed, using local: {e}")
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute('SELECT * FROM clients WHERE id = ?', (client_id,))
     row = cursor.fetchone()
-
     conn.close()
     return dict(row) if row else None
 
 
 def update_client(client_id, **kwargs):
-    """Update client information."""
+    """Update client information. Tries backend API first."""
+    if is_backend_online():
+        try:
+            result = api_update_client(client_id, **kwargs)
+            if result:
+                # Also update locally
+                _update_client_local(client_id, **kwargs)
+                return True
+        except Exception as e:
+            logger.warning(f"Backend update_client failed, using local: {e}")
+    return _update_client_local(client_id, **kwargs)
+
+
+def _update_client_local(client_id, **kwargs):
+    """Update client in local SQLite."""
     conn = get_connection()
     cursor = conn.cursor()
-
-    # Build update query dynamically
     fields = []
     values = []
     for key, value in kwargs.items():
         if key not in ['id', 'created_at']:
             fields.append(f"{key} = ?")
             values.append(value)
-
     fields.append("updated_at = ?")
     values.append(datetime.now().isoformat())
     values.append(client_id)
-
     query = f"UPDATE clients SET {', '.join(fields)} WHERE id = ?"
     cursor.execute(query, values)
-
     conn.commit()
     conn.close()
-
     return True
 
 
 def delete_client(client_id):
-    """Delete a client and all associated data."""
+    """Delete a client and all associated data. Tries backend API first."""
+    if is_backend_online():
+        try:
+            result = api_delete_client(client_id)
+            if result:
+                _delete_client_local(client_id)
+                return True
+        except Exception as e:
+            logger.warning(f"Backend delete_client failed, using local: {e}")
+    return _delete_client_local(client_id)
+
+
+def _delete_client_local(client_id):
+    """Delete client from local SQLite."""
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute('DELETE FROM clients WHERE id = ?', (client_id,))
-
     conn.commit()
     conn.close()
-
     return True
 
 
@@ -214,74 +310,112 @@ def delete_client(client_id):
 
 def add_client_process(client_id, process_id, process_name, custom_name="",
                        category="", criticality_per_day=0, notes=""):
-    """Add a process to a client."""
+    """Add a process to a client. Tries backend API first."""
+    if is_backend_online():
+        try:
+            result = api_add_process(client_id, process_id, process_name,
+                                     custom_name, category, criticality_per_day, notes)
+            if result is not None:
+                _add_process_local(client_id, process_id, process_name,
+                                   custom_name, category, criticality_per_day, notes)
+                return result
+        except Exception as e:
+            logger.warning(f"Backend add_process failed, using local: {e}")
+    return _add_process_local(client_id, process_id, process_name,
+                              custom_name, category, criticality_per_day, notes)
+
+
+def _add_process_local(client_id, process_id, process_name, custom_name="",
+                       category="", criticality_per_day=0, notes=""):
+    """Add process to local SQLite."""
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute('''
         INSERT INTO client_processes (client_id, process_id, process_name,
                                       custom_name, category, criticality_per_day, notes)
         VALUES (?, ?, ?, ?, ?, ?, ?)
     ''', (client_id, process_id, process_name, custom_name, category,
           criticality_per_day, notes))
-
     process_db_id = cursor.lastrowid
     conn.commit()
     conn.close()
-
     return process_db_id
 
 
 def get_client_processes(client_id):
-    """Get all processes for a client."""
+    """Get all processes for a client. Tries backend API first."""
+    if is_backend_online():
+        try:
+            result = api_get_processes(client_id)
+            if result is not None:
+                return result
+        except Exception as e:
+            logger.warning(f"Backend get_processes failed, using local: {e}")
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute('''
         SELECT * FROM client_processes
         WHERE client_id = ?
         ORDER BY criticality_per_day DESC
     ''', (client_id,))
-
     processes = [dict(row) for row in cursor.fetchall()]
-
     conn.close()
     return processes
 
 
 def update_client_process(process_db_id, **kwargs):
-    """Update a client process."""
+    """Update a client process. Tries backend API first."""
+    # Need client_id for API call — extract from kwargs or look up
+    client_id = kwargs.pop('client_id', None)
+    if is_backend_online() and client_id:
+        try:
+            result = api_update_process(client_id, process_db_id, **kwargs)
+            if result:
+                _update_process_local(process_db_id, **kwargs)
+                return True
+        except Exception as e:
+            logger.warning(f"Backend update_process failed, using local: {e}")
+    return _update_process_local(process_db_id, **kwargs)
+
+
+def _update_process_local(process_db_id, **kwargs):
+    """Update process in local SQLite."""
     conn = get_connection()
     cursor = conn.cursor()
-
     fields = []
     values = []
     for key, value in kwargs.items():
         if key not in ['id', 'client_id', 'created_at']:
             fields.append(f"{key} = ?")
             values.append(value)
-
     values.append(process_db_id)
-
     query = f"UPDATE client_processes SET {', '.join(fields)} WHERE id = ?"
     cursor.execute(query, values)
-
     conn.commit()
     conn.close()
-
     return True
 
 
-def delete_client_process(process_db_id):
-    """Delete a client process."""
+def delete_client_process(process_db_id, client_id=None):
+    """Delete a client process. Tries backend API first."""
+    if is_backend_online() and client_id:
+        try:
+            result = api_delete_process(client_id, process_db_id)
+            if result:
+                _delete_process_local(process_db_id)
+                return True
+        except Exception as e:
+            logger.warning(f"Backend delete_process failed, using local: {e}")
+    return _delete_process_local(process_db_id)
+
+
+def _delete_process_local(process_db_id):
+    """Delete process from local SQLite."""
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute('DELETE FROM client_processes WHERE id = ?', (process_db_id,))
-
     conn.commit()
     conn.close()
-
     return True
 
 
@@ -291,29 +425,51 @@ def delete_client_process(process_db_id):
 
 def add_client_risk(client_id, risk_id, risk_name, domain="", category="",
                     probability=0.5, is_prioritized=0, notes=""):
-    """Add a risk to a client's risk portfolio."""
+    """Add a risk to a client's risk portfolio. Tries backend API first."""
+    # Convert int to bool for API compatibility
+    is_prio_bool = bool(is_prioritized)
+    if is_backend_online():
+        try:
+            result = api_add_risk(client_id, risk_id, risk_name, domain,
+                                  category, probability, is_prio_bool, notes)
+            if result is not None:
+                _add_risk_local(client_id, risk_id, risk_name, domain,
+                                category, probability, is_prioritized, notes)
+                return result
+        except Exception as e:
+            logger.warning(f"Backend add_risk failed, using local: {e}")
+    return _add_risk_local(client_id, risk_id, risk_name, domain,
+                           category, probability, is_prioritized, notes)
+
+
+def _add_risk_local(client_id, risk_id, risk_name, domain="", category="",
+                    probability=0.5, is_prioritized=0, notes=""):
+    """Add risk to local SQLite."""
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute('''
         INSERT OR REPLACE INTO client_risks
         (client_id, risk_id, risk_name, domain, category, probability, is_prioritized, notes)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     ''', (client_id, risk_id, risk_name, domain, category, probability,
           is_prioritized, notes))
-
     risk_db_id = cursor.lastrowid
     conn.commit()
     conn.close()
-
     return risk_db_id
 
 
 def get_client_risks(client_id, prioritized_only=False):
-    """Get all risks for a client."""
+    """Get all risks for a client. Tries backend API first."""
+    if is_backend_online():
+        try:
+            result = api_get_risks(client_id, prioritized_only)
+            if result is not None:
+                return result
+        except Exception as e:
+            logger.warning(f"Backend get_risks failed, using local: {e}")
     conn = get_connection()
     cursor = conn.cursor()
-
     if prioritized_only:
         cursor.execute('''
             SELECT * FROM client_risks
@@ -326,33 +482,40 @@ def get_client_risks(client_id, prioritized_only=False):
             WHERE client_id = ?
             ORDER BY probability DESC
         ''', (client_id,))
-
     risks = [dict(row) for row in cursor.fetchall()]
-
     conn.close()
     return risks
 
 
 def update_client_risk(risk_db_id, **kwargs):
-    """Update a client risk."""
+    """Update a client risk. Tries backend API first."""
+    client_id = kwargs.pop('client_id', None)
+    if is_backend_online() and client_id:
+        try:
+            result = api_update_risk(client_id, risk_db_id, **kwargs)
+            if result:
+                _update_risk_local(risk_db_id, **kwargs)
+                return True
+        except Exception as e:
+            logger.warning(f"Backend update_risk failed, using local: {e}")
+    return _update_risk_local(risk_db_id, **kwargs)
+
+
+def _update_risk_local(risk_db_id, **kwargs):
+    """Update risk in local SQLite."""
     conn = get_connection()
     cursor = conn.cursor()
-
     fields = []
     values = []
     for key, value in kwargs.items():
         if key not in ['id', 'client_id', 'created_at']:
             fields.append(f"{key} = ?")
             values.append(value)
-
     values.append(risk_db_id)
-
     query = f"UPDATE client_risks SET {', '.join(fields)} WHERE id = ?"
     cursor.execute(query, values)
-
     conn.commit()
     conn.close()
-
     return True
 
 
@@ -362,10 +525,29 @@ def update_client_risk(risk_db_id, **kwargs):
 
 def save_assessment(client_id, process_id, risk_id, vulnerability,
                     resilience, expected_downtime, notes=""):
-    """Save or update a risk assessment."""
+    """Save or update a risk assessment. Tries backend API first."""
+    if is_backend_online():
+        try:
+            result = api_save_assessment(client_id, process_id, risk_id,
+                                         vulnerability, resilience,
+                                         expected_downtime, notes)
+            if result is not None:
+                _save_assessment_local(client_id, process_id, risk_id,
+                                       vulnerability, resilience,
+                                       expected_downtime, notes)
+                return True
+        except Exception as e:
+            logger.warning(f"Backend save_assessment failed, using local: {e}")
+    return _save_assessment_local(client_id, process_id, risk_id,
+                                  vulnerability, resilience,
+                                  expected_downtime, notes)
+
+
+def _save_assessment_local(client_id, process_id, risk_id, vulnerability,
+                           resilience, expected_downtime, notes=""):
+    """Save assessment to local SQLite."""
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute('''
         INSERT OR REPLACE INTO risk_assessments
         (client_id, process_id, risk_id, vulnerability, resilience,
@@ -373,18 +555,22 @@ def save_assessment(client_id, process_id, risk_id, vulnerability,
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     ''', (client_id, process_id, risk_id, vulnerability, resilience,
           expected_downtime, notes, datetime.now().isoformat()))
-
     conn.commit()
     conn.close()
-
     return True
 
 
 def get_assessments(client_id):
-    """Get all assessments for a client with process and risk details."""
+    """Get all assessments for a client with process and risk details. Tries backend API first."""
+    if is_backend_online():
+        try:
+            result = api_get_assessments(client_id)
+            if result is not None:
+                return result
+        except Exception as e:
+            logger.warning(f"Backend get_assessments failed, using local: {e}")
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute('''
         SELECT
             ra.*,
@@ -402,9 +588,7 @@ def get_assessments(client_id):
         WHERE ra.client_id = ?
         ORDER BY cp.criticality_per_day DESC, cr.probability DESC
     ''', (client_id,))
-
     assessments = [dict(row) for row in cursor.fetchall()]
-
     conn.close()
     return assessments
 
@@ -413,14 +597,11 @@ def get_assessment(client_id, process_id, risk_id):
     """Get a specific assessment."""
     conn = get_connection()
     cursor = conn.cursor()
-
     cursor.execute('''
         SELECT * FROM risk_assessments
         WHERE client_id = ? AND process_id = ? AND risk_id = ?
     ''', (client_id, process_id, risk_id))
-
     row = cursor.fetchone()
-
     conn.close()
     return dict(row) if row else None
 
@@ -440,7 +621,14 @@ def calculate_risk_exposure(criticality, vulnerability, resilience,
 
 
 def get_risk_exposure_summary(client_id):
-    """Get comprehensive risk exposure summary for a client."""
+    """Get comprehensive risk exposure summary for a client. Tries backend API first."""
+    if is_backend_online():
+        try:
+            result = api_get_exposure_summary(client_id)
+            if result is not None:
+                return result
+        except Exception as e:
+            logger.warning(f"Backend exposure_summary failed, using local: {e}")
     assessments = get_assessments(client_id)
 
     if not assessments:
