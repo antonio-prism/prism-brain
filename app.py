@@ -16,18 +16,34 @@ sys.path.insert(0, str(APP_DIR))
 
 from utils.constants import APP_NAME, APP_VERSION, APP_SUBTITLE, RISK_DOMAINS
 from utils.helpers import load_data_summary
-from modules.database import get_all_clients, init_database
+from modules.database import get_all_clients, init_database, is_backend_online, get_data_source, refresh_backend_status
+from modules.api_client import API_BASE_URL
 
 # Page configuration
 st.set_page_config(
     page_title=f"{APP_NAME}",
-    page_icon="🎯",
+    page_icon="\U0001f3af",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 # Initialize database
 init_database()
+
+# --- Backend Status Indicator (sidebar) ---
+with st.sidebar:
+    st.markdown("---")
+    st.caption("**Backend Connection**")
+    backend_online = is_backend_online()
+    if backend_online:
+        st.markdown("\U0001f7e2 **Connected** (PostgreSQL)")
+    else:
+        st.markdown("\U0001f534 **Offline** (using local SQLite)")
+    st.caption(f"Data: {get_data_source()}")
+    if st.button("\U0001f504 Refresh", key="refresh_backend"):
+        refresh_backend_status()
+        st.rerun()
+    st.markdown("---")
 
 # Custom CSS
 st.markdown("""
@@ -65,7 +81,7 @@ def main():
     """Main application page - Home/Dashboard."""
 
     # Header
-    st.markdown(f'<p class="main-header">🎯 {APP_NAME}</p>', unsafe_allow_html=True)
+    st.markdown(f'<p class="main-header">\U0001f3af {APP_NAME}</p>', unsafe_allow_html=True)
     st.markdown(f'<p class="sub-header">{APP_SUBTITLE} v{APP_VERSION}</p>', unsafe_allow_html=True)
 
     st.divider()
@@ -80,17 +96,17 @@ def main():
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-        st.metric("📊 Risk Events", f"{summary['risks']['total']:,}")
+        st.metric("\U0001f4ca Risk Events", f"{summary['risks']['total']:,}")
 
     with col2:
-        st.metric("🔥 Super Risks", f"{summary['risks'].get('super_risks', 94)}")
+        st.metric("\U0001f525 Super Risks", f"{summary['risks'].get('super_risks', 94)}")
 
     with col3:
-        st.metric("📋 Processes", f"{summary['processes']['total']:,}")
+        st.metric("\U0001f4cb Processes", f"{summary['processes']['total']:,}")
 
     with col4:
         clients = get_all_clients()
-        st.metric("🏢 Active Clients", len(clients))
+        st.metric("\U0001f3e2 Active Clients", len(clients))
 
     st.divider()
 
@@ -98,50 +114,50 @@ def main():
     col_left, col_right = st.columns([2, 1])
 
     with col_left:
-        st.subheader("📍 Quick Start Guide")
+        st.subheader("\U0001f4cd Quick Start Guide")
 
         st.markdown("""
         Welcome to **PRISM Brain** - your comprehensive risk intelligence system.
 
         ### How to Use This Application
 
-        **Step 1: Client Setup** 🏢
+        **Step 1: Client Setup** \U0001f3e2
         - Create a new client profile with company information
         - Select relevant business processes from the APQC framework
         - Set criticality values (revenue impact per day of disruption)
 
-        **Step 2: Risk Selection** ⚡
+        **Step 2: Risk Selection** \u26a1
         - Review the 900 risk events in our database
         - System automatically suggests risks relevant to your client
         - **NEW:** Calculate dynamic probabilities from external data
 
-        **Step 3: Prioritization** 🎯
+        **Step 3: Prioritization** \U0001f3af
         - Apply the **80/20 rule** to focus on critical processes
         - Auto-score risks by industry/geographic relevance
         - Preview the assessment matrix and adjust thresholds
         - Estimate effort before starting detailed assessment
 
-        **Step 4: Risk Assessment** 📝
+        **Step 4: Risk Assessment** \U0001f4dd
         - For each prioritized process-risk combination:
           - Set Vulnerability (0-100%)
           - Set Resilience (0-100%)
           - Set Expected Downtime (days)
 
-        **Step 5: Results Dashboard** 💰
+        **Step 5: Results Dashboard** \U0001f4b0
         - View total risk exposure in your chosen currency
         - Analyze risk by domain, process, and risk event
         - Export results to Excel for reporting
 
-        **Optional: Data Sources** 📡
+        **Optional: Data Sources** \U0001f4e1
         - Configure external data feeds for probability calculations
         - View live data from news, weather, economic, and cyber sources
         - Customize the probability calculation weights
         """)
 
-        st.info("👈 Use the sidebar to navigate between modules")
+        st.info("\U0001f448 Use the sidebar to navigate between modules")
 
     with col_right:
-        st.subheader("📊 Risk Domains")
+        st.subheader("\U0001f4ca Risk Domains")
 
         for domain, info in RISK_DOMAINS.items():
             domain_risks = summary['risks'].get('by_domain', {}).get(domain, 0)
@@ -157,19 +173,19 @@ def main():
     st.divider()
 
     # Recent clients section
-    st.subheader("🏢 Recent Clients")
+    st.subheader("\U0001f3e2 Recent Clients")
 
     clients = get_all_clients()
 
     if clients:
-        for client in clients[:5]:  # Show last 5 clients
+        for client in clients[:5]:
             col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
             with col1:
                 st.write(f"**{client['name']}**")
             with col2:
-                st.write(f"📍 {client['location'] or 'N/A'}")
+                st.write(f"\U0001f4cd {client['location'] or 'N/A'}")
             with col3:
-                st.write(f"🏭 {client['industry'] or 'N/A'}")
+                st.write(f"\U0001f3ed {client['industry'] or 'N/A'}")
             with col4:
                 if st.button("Open", key=f"open_{client['id']}"):
                     st.session_state['current_client_id'] = client['id']
@@ -177,12 +193,12 @@ def main():
     else:
         st.info("No clients yet. Create your first client in the Client Setup module.")
 
-        if st.button("➕ Create First Client", type="primary"):
+        if st.button("\u2795 Create First Client", type="primary"):
             st.switch_page("pages/1_Client_Setup.py")
 
     # Footer
     st.divider()
-    st.caption(f"PRISM Brain v{APP_VERSION} | © 2026 | Risk data updated: February 2026")
+    st.caption(f"PRISM Brain v{APP_VERSION} | \u00a9 2026 | Risk data updated: February 2026")
 
 
 if __name__ == "__main__":
