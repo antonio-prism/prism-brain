@@ -24,7 +24,8 @@ from modules.probability_engine import (
     calculate_all_probabilities, get_probability_summary,
     FACTOR_WEIGHTS
 )
-from modules.database import get_client, get_all_clients
+from modules.database import get_client, get_all_clients, is_backend_online
+from modules.api_client import fetch_data_sources
 
 st.set_page_config(page_title="Data Sources | PRISM Brain", page_icon="📡", layout="wide")
 
@@ -685,6 +686,57 @@ def show_probability_test():
             st.dataframe(df, use_container_width=True, hide_index=True)
 
 
+def show_backend_sources():
+    """Show health status of all 28 backend data sources."""
+    if not is_backend_online():
+        st.warning("Backend is offline. Backend sources are only available when connected to the PostgreSQL backend.")
+        return
+
+    st.subheader("Backend Data Source Health")
+
+    sources_data = fetch_data_sources()
+    if not sources_data:
+        st.error("Could not fetch data source health from backend.")
+        return
+
+    sources = sources_data.get("data_sources", [])
+    if not sources:
+        st.info("No data sources reported by backend.")
+        return
+
+    # Summary metrics
+    operational = len([s for s in sources if s.get("status") == "operational"])
+    degraded = len([s for s in sources if s.get("status") == "degraded"])
+    down = len([s for s in sources if s.get("status") not in ("operational", "degraded")])
+
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total Sources", len(sources))
+    with col2:
+        st.metric("\U0001f7e2 Operational", operational)
+    with col3:
+        st.metric("\U0001f7e1 Degraded", degraded)
+    with col4:
+        st.metric("\U0001f534 Down", down)
+
+    # Build dataframe
+    rows = []
+    for s in sources:
+        status = s.get("status", "unknown")
+        status_icon = {"operational": "\U0001f7e2", "degraded": "\U0001f7e1"}.get(status, "\U0001f534")
+        rows.append({
+            "Source": s.get("source_name", "Unknown"),
+            "Status": f"{status_icon} {status.title()}",
+            "Response (ms)": s.get("response_time_ms", "N/A"),
+            "Success Rate (24h)": f"{s.get('success_rate_24h', 0):.0%}" if s.get("success_rate_24h") is not None else "N/A",
+            "Last Check": s.get("check_time", "N/A"),
+            "Error": s.get("error_message") or ""
+        })
+
+    df = pd.DataFrame(rows)
+    st.dataframe(df, use_container_width=True, hide_index=True)
+
+
 def main():
     """Main page function."""
     st.title("📡 External Data Sources")
@@ -696,32 +748,36 @@ def main():
     st.divider()
 
     tabs = st.tabs([
-        "📊 Overview",
-        "🔑 API Setup",
-        "⏰ Schedule",
-        "🔍 Live Data",
-        "⚙️ Custom Sources",
-        "🧪 Test"
+        "\U0001f4e1 Backend Sources",
+        "\U0001f4ca Overview",
+        "\U0001f511 API Setup",
+        "\u23f0 Schedule",
+        "\U0001f50d Live Data",
+        "\u2699\ufe0f Custom Sources",
+        "\U0001f9ea Test"
     ])
 
     with tabs[0]:
+        show_backend_sources()
+
+    with tabs[1]:
         show_data_overview()
         st.divider()
         show_probability_factors()
 
-    with tabs[1]:
+    with tabs[2]:
         show_api_configuration()
 
-    with tabs[2]:
+    with tabs[3]:
         show_refresh_schedule()
 
-    with tabs[3]:
+    with tabs[4]:
         show_live_data_preview()
 
-    with tabs[4]:
+    with tabs[5]:
         show_data_source_config()
 
-    with tabs[5]:
+    with tabs[6]:
         show_probability_test()
 
     # Navigation
