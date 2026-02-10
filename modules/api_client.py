@@ -138,7 +138,7 @@ def fetch_probabilities(limit: int = 12000, skip: int = 0, use_cache: bool = Tru
         resp = requests.get(
             f"{API_BASE_URL}/api/v1/probabilities",
             params={'limit': limit, 'skip': skip},
-            timeout=API_TIMEOUT
+            timeout=90
         )
         if resp.status_code == 200:
             data = resp.json()
