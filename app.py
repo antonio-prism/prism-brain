@@ -17,7 +17,7 @@ sys.path.insert(0, str(APP_DIR))
 from utils.constants import APP_NAME, APP_VERSION, APP_SUBTITLE, RISK_DOMAINS
 from utils.helpers import load_data_summary
 from modules.database import get_all_clients, init_database, is_backend_online, get_data_source, refresh_backend_status
-from modules.api_client import API_BASE_URL
+from modules.api_client import API_BASE_URL, api_get_dashboard_summary
 
 # Page configuration
 st.set_page_config(
@@ -77,6 +77,62 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
+def show_live_risk_intelligence():
+    """Show live risk intelligence from backend dashboard summary."""
+    try:
+        data = api_get_dashboard_summary()
+        if not data:
+            st.warning("Live risk data temporarily unavailable.")
+            return
+
+        st.subheader("\U0001f4e1 Live Risk Intelligence")
+
+        summary = data.get("summary", {})
+        top_risks = data.get("top_risks", [])
+        top_risers = data.get("top_risers", [])
+        flagged = data.get("flagged_events", [])
+
+        # Metrics row
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            high_count = summary.get("high_risk_count", len([r for r in top_risks if r.get("probability", 0) > 70]))
+            st.metric("\u26a0\ufe0f High Risk Events", high_count)
+        with col2:
+            st.metric("\U0001f4c8 Risers (7d)", len(top_risers))
+        with col3:
+            top_fallers = data.get("top_fallers", [])
+            st.metric("\U0001f4c9 Fallers (7d)", len(top_fallers))
+        with col4:
+            st.metric("\U0001f6a9 Flagged Events", len(flagged))
+
+        # Two columns: top risks + top risers
+        col_left, col_right = st.columns(2)
+
+        with col_left:
+            st.markdown("**Top 5 Highest Risk Events**")
+            for r in top_risks[:5]:
+                prob = r.get("probability", 0)
+                bar = "\U0001f534" if prob > 70 else ("\U0001f7e0" if prob > 40 else "\U0001f7e2")
+                st.markdown(f"{bar} **{r.get('event_id', 'N/A')}** \u2014 {r.get('name', 'Unknown')}: **{prob:.1f}%**")
+
+        with col_right:
+            st.markdown("**Top 5 Rising Risks (7d)**")
+            for r in top_risers[:5]:
+                change = r.get("change", 0)
+                st.markdown(f"\U0001f4c8 **{r.get('event_id', 'N/A')}** \u2014 {r.get('name', 'Unknown')}: +{change:.1f}pp")
+
+        # Latest calculation timestamp
+        latest = data.get("latest_calculation", {})
+        if latest:
+            ts = latest.get("timestamp", "N/A")
+            st.caption(f"Last calculation: {ts}")
+
+        st.divider()
+
+    except Exception as e:
+        st.warning(f"Live risk data unavailable: {e}")
+
+
 def main():
     """Main application page - Home/Dashboard."""
 
@@ -109,6 +165,10 @@ def main():
         st.metric("\U0001f3e2 Active Clients", len(clients))
 
     st.divider()
+
+    # Live Risk Intelligence (backend data)
+    if backend_online:
+        show_live_risk_intelligence()
 
     # Main content
     col_left, col_right = st.columns([2, 1])
