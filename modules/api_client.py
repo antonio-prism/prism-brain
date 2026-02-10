@@ -123,27 +123,42 @@ def fetch_events(limit: int = 500, skip: int = 0, use_cache: bool = True) -> Opt
         return None
 
 
-def fetch_probabilities(limit: int = 12000, skip: int = 0, use_cache: bool = True) -> Optional[Dict[str, Dict]]:
+def fetch_probabilities(limit: int = 0, skip: int = 0, use_cache: bool = True) -> Optional[Dict[str, Dict]]:
     """
     Fetch latest calculated probabilities from the backend.
+    Uses pagination (max 500 per request) to retrieve all entries.
     Returns dict mapping event_id -> probability data, or None on error.
     """
-    cache_key = f"probabilities_{limit}_{skip}"
+    cache_key = "probabilities_all"
     if use_cache:
         cached = _get_cached(cache_key)
         if cached is not None:
             return cached
     
+    PAGE_SIZE = 500  # Backend maximum limit per request
+    prob_dict = {}
+    current_skip = 0
+    total = None
+    
     try:
-        resp = requests.get(
-            f"{API_BASE_URL}/api/v1/probabilities",
-            params={'limit': limit, 'skip': skip},
-            timeout=90
-        )
-        if resp.status_code == 200:
+        while True:
+            resp = requests.get(
+                f"{API_BASE_URL}/api/v1/probabilities",
+                params={'limit': PAGE_SIZE, 'skip': current_skip},
+                timeout=90
+            )
+            if resp.status_code != 200:
+                logger.warning(f"Failed to fetch probabilities page at skip={current_skip}: HTTP {resp.status_code}")
+                break
+            
             data = resp.json()
+            if total is None:
+                total = data.get('total', 0)
+            
             prob_list = data if isinstance(data, list) else data.get('probabilities', data.get('data', []))
-            prob_dict = {}
+            if not prob_list:
+                break
+            
             for p in prob_list:
                 eid = p.get('event_id')
                 if eid:
@@ -169,13 +184,25 @@ def fetch_probabilities(limit: int = 12000, skip: int = 0, use_cache: bool = Tru
                         'trend': p.get('trend'),
                         'is_anomaly': p.get('is_anomaly', False)
                     }
+            
+            current_skip += len(prob_list)
+            if total and current_skip >= total:
+                break
+            if len(prob_list) < PAGE_SIZE:
+                break
+        
+        if prob_dict:
+            logger.info(f"Fetched {len(prob_dict)} probabilities from backend (paginated, {current_skip} total entries)")
             _set_cached(cache_key, prob_dict)
             return prob_dict
         else:
-            logger.warning(f"Failed to fetch probabilities: HTTP {resp.status_code}")
+            logger.warning("No probabilities returned from backend after pagination")
             return None
     except Exception as e:
         logger.error(f"Error fetching probabilities: {e}")
+        if prob_dict:
+            logger.info(f"Returning {len(prob_dict)} partial probabilities despite error")
+            return prob_dict
         return None
 
 
