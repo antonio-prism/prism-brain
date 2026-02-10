@@ -397,3 +397,55 @@ def api_create_profile(industry, profile_name, description="", is_template=True,
 
 def api_apply_profile(profile_id, client_id):
     return _api_request("POST", f"/api/v1/profiles/{profile_id}/apply/{client_id}")
+
+
+# ============================================================
+# Phase 4: Dashboard Summary & Report Scheduling
+# ============================================================
+
+def api_get_dashboard_summary():
+    """Get live dashboard summary from backend.
+    Returns dict with summary, top_risks, top_risers, top_fallers,
+    flagged_events, latest_calculation."""
+    return _api_request("GET", "/api/v1/dashboard/summary")
+
+
+def api_create_report_schedule(name, report_type="risk_summary",
+                                frequency="weekly", recipients=None,
+                                filters=None):
+    """Create a scheduled report."""
+    data = {
+        "name": name,
+        "report_type": report_type,
+        "frequency": frequency,
+        "recipients": recipients or [],
+        "filters": filters or {}
+    }
+    return _api_request("POST", "/api/v1/reports/schedules", json_data=data)
+
+
+def api_get_report_schedules():
+    """Get all report schedules."""
+    return _api_request("GET", "/api/v1/reports/schedules")
+
+
+def api_get_report_schedule(schedule_id):
+    """Get a specific report schedule."""
+    return _api_request("GET", f"/api/v1/reports/schedules/{schedule_id}")
+
+
+def api_update_report_schedule(schedule_id, updates):
+    """Update a report schedule. updates is a dict of fields to change."""
+    return _api_request("PUT", f"/api/v1/reports/schedules/{schedule_id}",
+                        json_data=updates)
+
+
+def api_generate_report(report_type="risk_summary", filters=None):
+    """Generate a report on demand."""
+    data = {"report_type": report_type, "filters": filters or {}}
+    return _api_request("POST", "/api/v1/reports/generate", json_data=data)
+
+
+def api_delete_report_schedule(schedule_id):
+    """Delete a report schedule."""
+    return _api_request("DELETE", f"/api/v1/reports/schedules/{schedule_id}")
