@@ -687,55 +687,76 @@ def show_probability_test():
 
 
 def show_backend_sources():
-    """Show health status of all 28 backend data sources."""
+    """Show health status of all 28 backend data sources with refresh controls."""
     if not is_backend_online():
         st.warning("Backend is offline. Backend sources are only available when connected to the PostgreSQL backend.")
         return
 
-    st.subheader("Backend Data Source Health")
+    col_title, col_refresh = st.columns([3, 1])
+    with col_title:
+        st.subheader("Backend Data Source Health")
+    with col_refresh:
+        if st.button("\U0001f504 Refresh Sources", use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
 
-    sources_data = fetch_data_sources()
-    if not sources_data:
-        st.error("Could not fetch data source health from backend.")
-        return
+    try:
+        sources_data = fetch_data_sources()
+        if not sources_data:
+            st.error("Could not fetch data source health from backend. The API may be temporarily unavailable.")
+            st.info("\U0001f4a1 Try clicking 'Refresh Sources' or check the backend connection in the sidebar.")
+            return
 
-    sources = sources_data.get("data_sources", [])
-    if not sources:
-        st.info("No data sources reported by backend.")
-        return
+        sources = sources_data.get("data_sources", [])
+        if not sources:
+            st.info("No data sources reported by backend.")
+            return
 
-    # Summary metrics
-    operational = len([s for s in sources if s.get("status") == "operational"])
-    degraded = len([s for s in sources if s.get("status") == "degraded"])
-    down = len([s for s in sources if s.get("status") not in ("operational", "degraded")])
+        # Summary metrics
+        operational = len([s for s in sources if s.get("status") == "operational"])
+        degraded = len([s for s in sources if s.get("status") == "degraded"])
+        down = len([s for s in sources if s.get("status") not in ("operational", "degraded")])
 
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("Total Sources", len(sources))
-    with col2:
-        st.metric("\U0001f7e2 Operational", operational)
-    with col3:
-        st.metric("\U0001f7e1 Degraded", degraded)
-    with col4:
-        st.metric("\U0001f534 Down", down)
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Sources", len(sources))
+        with col2:
+            st.metric("\U0001f7e2 Operational", operational)
+        with col3:
+            st.metric("\U0001f7e1 Degraded", degraded)
+        with col4:
+            st.metric("\U0001f534 Down", down)
 
-    # Build dataframe
-    rows = []
-    for s in sources:
-        status = s.get("status", "unknown")
-        status_icon = {"operational": "\U0001f7e2", "degraded": "\U0001f7e1"}.get(status, "\U0001f534")
-        rows.append({
-            "Source": s.get("source_name", "Unknown"),
-            "Status": f"{status_icon} {status.title()}",
-            "Response (ms)": s.get("response_time_ms", "N/A"),
-            "Success Rate (24h)": f"{s.get('success_rate_24h', 0):.0%}" if s.get("success_rate_24h") is not None else "N/A",
-            "Last Check": s.get("check_time", "N/A"),
-            "Error": s.get("error_message") or ""
-        })
+        # Build dataframe with safe field access
+        rows = []
+        for s in sources:
+            try:
+                status = s.get("status", "unknown")
+                status_icon = {"operational": "\U0001f7e2", "degraded": "\U0001f7e1"}.get(status, "\U0001f534")
+                resp_time = s.get("response_time_ms", None)
+                success_rate = s.get("success_rate_24h", None)
+                rows.append({
+                    "Source": s.get("source_name", s.get("name", "Unknown")),
+                    "Status": f"{status_icon} {status.title()}",
+                    "Response (ms)": f"{resp_time:.0f}" if isinstance(resp_time, (int, float)) else "N/A",
+                    "Success Rate (24h)": f"{success_rate:.0%}" if isinstance(success_rate, (int, float)) else "N/A",
+                    "Last Check": s.get("check_time", s.get("last_check", "N/A")),
+                    "Error": s.get("error_message") or ""
+                })
+            except Exception:
+                rows.append({"Source": str(s.get("source_name", "Unknown")), "Status": "\U0001f534 Error", "Response (ms)": "N/A", "Success Rate (24h)": "N/A", "Last Check": "N/A", "Error": "Parse error"})
 
-    df = pd.DataFrame(rows)
-    st.dataframe(df, use_container_width=True, hide_index=True)
+        df = pd.DataFrame(rows)
+        st.dataframe(df, use_container_width=True, hide_index=True)
 
+        # Show last update timestamp
+        check_time = sources_data.get("checked_at", sources_data.get("timestamp", ""))
+        if check_time:
+            st.caption(f"Last health check: {check_time}")
+
+    except Exception as e:
+        st.error(f"Error loading backend sources: {str(e)}")
+        st.info("\U0001f4a1 Try clicking 'Refresh Sources' to retry.")
 
 def main():
     """Main page function."""
