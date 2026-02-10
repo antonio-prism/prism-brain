@@ -18,6 +18,7 @@ from utils.constants import APP_NAME, APP_VERSION, APP_SUBTITLE, RISK_DOMAINS
 from utils.helpers import load_data_summary
 from modules.database import get_all_clients, init_database, is_backend_online, get_data_source, refresh_backend_status
 from modules.api_client import API_BASE_URL, api_get_dashboard_summary
+from modules.demo_data import seed_demo_clients
 
 # Page configuration
 st.set_page_config(
@@ -29,6 +30,7 @@ st.set_page_config(
 
 # Initialize database
 init_database()
+seed_demo_clients()
 
 # --- Backend Status Indicator (sidebar) ---
 with st.sidebar:
