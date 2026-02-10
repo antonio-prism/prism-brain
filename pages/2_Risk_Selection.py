@@ -7,7 +7,7 @@ Now with dynamic probability calculations from external data.
 
 import streamlit as st
 import pandas as pd
-import sy
+import sys
 from pathlib import Path
 
 APP_DIR = Path(__file__).parent.parent
