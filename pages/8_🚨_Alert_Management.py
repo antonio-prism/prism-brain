@@ -7,7 +7,7 @@ import os
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from modules.api_client import 
+from modules.api_client import (
     check_backend_health,
     fetch_events,
     api_get_alerts,
