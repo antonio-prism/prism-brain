@@ -38,6 +38,8 @@ if 'selected_risks' not in st.session_state:
     st.session_state.selected_risks = set()
 if 'calculated_probabilities' not in st.session_state:
     st.session_state.calculated_probabilities = {}
+if 'backend_probs_auto_fetched' not in st.session_state:
+    st.session_state.backend_probs_auto_fetched = False
 if 'use_dynamic_probabilities' not in st.session_state:
     st.session_state.use_dynamic_probabilities = True
 
@@ -95,7 +97,7 @@ def probability_calculator():
     if backend_available:
         st.markdown("""
         The **backend Bayesian engine** (Railway) calculates probabilities using
-        12 professional data sources (FRED, NOAA, NVD, USGS, GDELT, EIA, and more)
+        28 professional data sources (FRED, NOAA, NVD, USGS, GDELT, EIA, IMF, FAO, and more)
         with log-odds modeling, signal extraction, and confidence intervals.
         """)
     else:
@@ -105,6 +107,14 @@ def probability_calculator():
         current conditions (25%), and industry/region exposure (20%).
         """)
         st.warning("Backend is offline -- using local probability engine as fallback.")
+
+    # Auto-fetch backend probabilities on first visit
+    if backend_available and not st.session_state.backend_probs_auto_fetched:
+        with st.spinner("Loading probabilities from backend..."):
+            backend_probs = fetch_probabilities(use_cache=True)
+            if backend_probs:
+                st.session_state.calculated_probabilities = backend_probs
+                st.session_state.backend_probs_auto_fetched = True
 
     st.session_state.use_dynamic_probabilities = st.toggle(
         "Use Dynamic Probabilities",
@@ -122,7 +132,7 @@ def probability_calculator():
                     backend_probs = fetch_probabilities(use_cache=False)
                     if backend_probs:
                         st.session_state.calculated_probabilities = backend_probs
-                        st.success(f"\u2705 Loaded {len(backend_probs)} probabilities from backend (Bayesian engine, 12 data sources)")
+                        st.success(f"\u2705 Loaded {len(backend_probs)} probabilities from backend (Bayesian engine, 28 data sources)")
                     else:
                         st.warning("Backend returned no data. Falling back to local engine...")
                         _calculate_local_probabilities(risks, client)
