@@ -7,7 +7,7 @@ Now with dynamic probability calculations from external data.
 
 import streamlit as st
 import pandas as pd
-import sys
+import sy
 from pathlib import Path
 
 APP_DIR = Path(__file__).parent.parent
@@ -128,17 +128,8 @@ def probability_calculator():
         button_label = "\U0001f504 Fetch Backend Probabilities" if backend_available else "\U0001f504 Recalculate Locally"
         if st.button(button_label, type="primary"):
             if backend_available:
-                with st.spinner("Fetching probabilities from backend Bayesian engine (paginated)..."):
-                    import time as _t
-                    _start = _t.time()
-                    try:
-                        backend_probs = fetch_probabilities(use_cache=False)
-                        _elapsed = _t.time() - _start
-                        st.caption(f"DEBUG: Fetch took {_elapsed:.1f}s, returned: {type(backend_probs).__name__}, len={len(backend_probs) if backend_probs else 0}")
-                    except Exception as _e:
-                        _elapsed = _t.time() - _start
-                        st.error(f"DEBUG: fetch_probabilities raised: {_e} (after {_elapsed:.1f}s)")
-                        backend_probs = None
+                with st.spinner("Fetching probabilities from backend Bayesian engine..."):
+                    backend_probs = fetch_probabilities(use_cache=False)
                     if backend_probs:
                         st.session_state.calculated_probabilities = backend_probs
                         st.success(f"\u2705 Loaded {len(backend_probs)} probabilities from backend (Bayesian engine, 28 data sources)")
