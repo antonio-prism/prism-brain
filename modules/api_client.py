@@ -1,4 +1,4 @@
-"""
+h"""
 PRISM Brain API Client
 Connects the Streamlit frontend to the FastAPI backend on Railway.
 Provides cached access to live probabilities, events, and data source health.
@@ -123,7 +123,7 @@ def fetch_events(limit: int = 500, skip: int = 0, use_cache: bool = True) -> Opt
         return None
 
 
-def fetch_probabilities(limit: int = 1000, skip: int = 0, use_cache: bool = True) -> Optional[Dict[str, Dict]]:
+def fetch_probabilities(limit: int = 12000, skip: int = 0, use_cache: bool = True) -> Optional[Dict[str, Dict]]:
     """
     Fetch latest calculated probabilities from the backend.
     Returns dict mapping event_id -> probability data, or None on error.
@@ -189,7 +189,7 @@ def fetch_data_sources(use_cache: bool = True) -> Optional[List[Dict]]:
         resp = requests.get(f"{API_BASE_URL}/api/v1/data-sources/health", timeout=API_TIMEOUT)
         if resp.status_code == 200:
             data = resp.json()
-            sources = data if isinstance(data, list) else data.get('sources', data.get('data', []))
+            sources = data if isinstance(data, list) else data.get('data_sources', data.get('sources', data.get('data', [])))
             _set_cached(cache_key, sources)
             return sources
         else:
