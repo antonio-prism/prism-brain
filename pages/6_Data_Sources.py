@@ -329,7 +329,7 @@ def show_live_data_preview():
     # API Status indicator
     api_status = get_api_status()
     live_sources = sum(1 for s in api_status.values() if s.get('configured') or s.get('status') == 'available')
-    st.info(f"📡 {live_sources}/3 API sources active. Others using simulated data.")
+    st.info(f"📡 {live_sources}/3 local API sources configured (OpenWeatherMap, NewsAPI, World Bank). The backend uses 28 professional data sources — see the Backend Sources tab.")
 
     # Select client for context
     clients = get_all_clients()
@@ -701,21 +701,20 @@ def show_backend_sources():
             st.rerun()
 
     try:
-        sources_data = fetch_data_sources()
-        if not sources_data:
+        sources = fetch_data_sources()
+        if not sources:
             st.error("Could not fetch data source health from backend. The API may be temporarily unavailable.")
             st.info("\U0001f4a1 Try clicking 'Refresh Sources' or check the backend connection in the sidebar.")
             return
 
-        sources = sources_data.get("data_sources", [])
         if not sources:
             st.info("No data sources reported by backend.")
             return
 
         # Summary metrics
-        operational = len([s for s in sources if s.get("status") == "operational"])
-        degraded = len([s for s in sources if s.get("status") == "degraded"])
-        down = len([s for s in sources if s.get("status") not in ("operational", "degraded")])
+        operational = len([s for s in sources if s.get("status", "").upper() == "OPERATIONAL"])
+        degraded = len([s for s in sources if s.get("status", "").upper() == "DEGRADED"])
+        down = len([s for s in sources if s.get("status", "").upper() not in ("OPERATIONAL", "DEGRADED")])
 
         col1, col2, col3, col4 = st.columns(4)
         with col1:
@@ -732,7 +731,7 @@ def show_backend_sources():
         for s in sources:
             try:
                 status = s.get("status", "unknown")
-                status_icon = {"operational": "\U0001f7e2", "degraded": "\U0001f7e1"}.get(status, "\U0001f534")
+                status_icon = {"operational": "\U0001f7e2", "degraded": "\U0001f7e1"}.get(status.lower(), "\U0001f534")
                 resp_time = s.get("response_time_ms", None)
                 success_rate = s.get("success_rate_24h", None)
                 rows.append({
