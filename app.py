@@ -79,10 +79,19 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def _cached_dashboard_summary():
+    """Cache dashboard summary for 5 minutes to reduce API calls."""
+    try:
+        return api_get_dashboard_summary()
+    except Exception:
+        return None
+
+
 def show_live_risk_intelligence():
     """Show live risk intelligence from backend dashboard summary."""
     try:
-        data = api_get_dashboard_summary()
+        data = _cached_dashboard_summary()
         if not data:
             st.warning("Live risk data temporarily unavailable.")
             return
@@ -147,8 +156,9 @@ def main():
     # Load summary data
     try:
         summary = load_data_summary()
-    except:
-        summary = {"risks": {"total": 900}, "processes": {"total": 1921}}
+    except Exception as e:
+        summary = {"risks": {"total": 900, "super_risks": 94}, "processes": {"total": 1921}}
+        st.sidebar.caption(f"\u26a0\ufe0f Data summary fallback: {type(e).__name__}")
 
     # Overview metrics
     col1, col2, col3, col4 = st.columns(4)
