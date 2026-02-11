@@ -248,6 +248,22 @@ def risk_overview():
     st.info(f"\U0001f525 **{len(super_risks)} Super Risks** identified - high-impact events requiring special attention")
 
 
+def _on_risk_checkbox_change(risk_id):
+    """Callback for risk checkbox changes. Only fires on actual user clicks."""
+    key = f"risk_{risk_id}"
+    if st.session_state.get(key, False):
+        st.session_state.selected_risks.add(risk_id)
+    else:
+        st.session_state.selected_risks.discard(risk_id)
+
+
+def _clear_checkbox_keys():
+    """Clear all risk checkbox widget keys from session state."""
+    for key in list(st.session_state.keys()):
+        if key.startswith("risk_"):
+            del st.session_state[key]
+
+
 def risk_selection_interface():
     """Main risk selection interface."""
     st.subheader("\u26a1 Select Risks for Assessment")
@@ -289,18 +305,25 @@ def risk_selection_interface():
     col1, col2, col3 = st.columns(3)
     with col1:
         if st.button("Select Top 20 by Relevance"):
+            _clear_checkbox_keys()
             for risk in filtered_risks[:20]:
-                st.session_state.selected_risks.add(risk['Event_ID'])
+                rid = risk['Event_ID']
+                st.session_state.selected_risks.add(rid)
+                st.session_state[f"risk_{rid}"] = True
             st.rerun()
     with col2:
         if st.button("Select All Super Risks"):
+            _clear_checkbox_keys()
             for risk in filtered_risks:
                 if risk.get('Super_Risk') == 'YES':
-                    st.session_state.selected_risks.add(risk['Event_ID'])
+                    rid = risk['Event_ID']
+                    st.session_state.selected_risks.add(rid)
+                    st.session_state[f"risk_{rid}"] = True
             st.rerun()
     with col3:
         if st.button("Clear Selection"):
             st.session_state.selected_risks = set()
+            _clear_checkbox_keys()
             st.rerun()
 
     st.divider()
@@ -323,10 +346,8 @@ def risk_selection_interface():
         with st.container():
             col1, col2 = st.columns([1, 11])
             with col1:
-                if st.checkbox("", value=is_selected, key=f"risk_{risk_id}"):
-                    st.session_state.selected_risks.add(risk_id)
-                else:
-                    st.session_state.selected_risks.discard(risk_id)
+                st.checkbox("", value=is_selected, key=f"risk_{risk_id}",
+                            on_change=_on_risk_checkbox_change, args=(risk_id,))
 
             with col2:
                 header_cols = st.columns([2, 1, 1, 1])
