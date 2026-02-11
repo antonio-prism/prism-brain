@@ -383,6 +383,53 @@ def risk_selection_interface():
     st.caption(f"Page {page} of {total_pages} | Showing {start_idx+1}-{min(end_idx, len(filtered_risks))} of {len(filtered_risks)}")
 
 
+def _do_save_risks(client_id, risk_dict):
+    """Persist selected risks to database. Works with both backend and local."""
+    existing = get_client_risks(client_id)
+    existing_by_risk_id = {r.get('risk_id'): r for r in existing}
+
+    # Deprioritize all existing risks (pass client_id so backend is updated!)
+    for r in existing:
+        update_client_risk(r['id'], client_id=client_id, is_prioritized=0)
+
+    saved_count = 0
+    for risk_id in st.session_state.selected_risks:
+        if risk_id in risk_dict:
+            risk = risk_dict[risk_id]
+            base_prob = risk.get('base_probability', 0.5)
+            if st.session_state.use_dynamic_probabilities and risk_id in st.session_state.calculated_probabilities:
+                calc_data = st.session_state.calculated_probabilities[risk_id]
+                if isinstance(calc_data, dict):
+                    probability = calc_data.get('probability', base_prob)
+                else:
+                    probability = float(calc_data)
+            else:
+                probability = base_prob
+
+            if risk_id in existing_by_risk_id:
+                # Risk already exists on backend -- update it instead of creating duplicate
+                update_client_risk(
+                    existing_by_risk_id[risk_id]['id'],
+                    client_id=client_id,
+                    is_prioritized=1,
+                    probability=probability
+                )
+            else:
+                # New risk -- add it
+                add_client_risk(
+                    client_id=client_id,
+                    risk_id=risk_id,
+                    risk_name=risk['Event_Name'],
+                    domain=risk.get('Layer_1_Primary', ''),
+                    category=risk.get('Layer_2_Primary', ''),
+                    probability=probability,
+                    is_prioritized=1
+                )
+            saved_count += 1
+
+    return saved_count
+
+
 def save_risk_selection():
     """Save selected risks to database."""
     st.subheader("\U0001f4be Save Selection")
@@ -407,35 +454,7 @@ def save_risk_selection():
                f"({len(processes)} processes x {len(st.session_state.selected_risks)} risks)")
 
     if st.button("\U0001f4be Save Risk Selection", type="primary", use_container_width=True):
-        existing = get_client_risks(st.session_state.current_client_id)
-        for r in existing:
-            update_client_risk(r['id'], is_prioritized=0)
-
-        saved_count = 0
-        for risk_id in st.session_state.selected_risks:
-            if risk_id in risk_dict:
-                risk = risk_dict[risk_id]
-                base_prob = risk.get('base_probability', 0.5)
-                if st.session_state.use_dynamic_probabilities and risk_id in st.session_state.calculated_probabilities:
-                    calc_data = st.session_state.calculated_probabilities[risk_id]
-                    if isinstance(calc_data, dict):
-                        probability = calc_data.get('probability', base_prob)
-                    else:
-                        probability = float(calc_data)
-                else:
-                    probability = base_prob
-
-                add_client_risk(
-                    client_id=st.session_state.current_client_id,
-                    risk_id=risk_id,
-                    risk_name=risk['Event_Name'],
-                    domain=risk.get('Layer_1_Primary', ''),
-                    category=risk.get('Layer_2_Primary', ''),
-                    probability=probability,
-                    is_prioritized=1
-                )
-                saved_count += 1
-
+        saved_count = _do_save_risks(st.session_state.current_client_id, risk_dict)
         prob_source = "dynamic (from external data)" if st.session_state.use_dynamic_probabilities and st.session_state.calculated_probabilities else "base"
         st.success(f"\u2705 Saved {saved_count} risks with {prob_source} probabilities!")
 
@@ -477,6 +496,10 @@ def main():
     with col3:
         if len(st.session_state.selected_risks) > 0:
             if st.button("Next: Assessment \u2192", type="primary"):
+                # Auto-save risks before navigating
+                risks = load_risk_database()
+                risk_dict = {r['Event_ID']: r for r in risks}
+                _do_save_risks(st.session_state.current_client_id, risk_dict)
                 st.switch_page("pages/3_Prioritization.py")
 
 
