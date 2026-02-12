@@ -161,7 +161,7 @@ def fetch_probabilities(limit: int = 0, skip: int = 0, use_cache: bool = True) -
             
             for p in prob_list:
                 eid = p.get('event_id')
-                if eid:
+                if eid and eid not in prob_dict:  # Keep first (newest) record per event
                     prob_dict[eid] = {
                         'probability': p.get('probability_pct', 50.0) / 100.0,
                         'probability_pct': p.get('probability_pct', 50.0),
