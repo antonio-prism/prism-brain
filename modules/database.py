@@ -626,6 +626,21 @@ def get_risk_exposure_summary(client_id):
         try:
             result = api_get_exposure_summary(client_id)
             if result is not None:
+                # Backend summary may not include detailed 'assessments' list
+                # Augment with local assessment data so dashboard views work
+                if 'assessments' not in result:
+                    local_assessments = get_assessments(client_id)
+                    detailed = []
+                    for a in local_assessments:
+                        exposure = calculate_risk_exposure(
+                            a['criticality_per_day'],
+                            a['vulnerability'],
+                            a['resilience'],
+                            a['expected_downtime'],
+                            a['probability']
+                        )
+                        detailed.append({**a, "exposure": exposure})
+                    result['assessments'] = detailed
                 return result
         except Exception as e:
             logger.warning(f"Backend exposure_summary failed, using local: {e}")
