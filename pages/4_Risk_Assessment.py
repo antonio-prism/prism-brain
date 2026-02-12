@@ -19,7 +19,7 @@ from utils.helpers import (
 )
 from modules.database import (
     get_client, get_all_clients, get_client_processes, get_client_risks,
-    get_assessments, get_assessment, save_assessment, calculate_risk_exposure
+    get_assessments, save_assessment, calculate_risk_exposure
 )
 
 st.set_page_config(page_title="Risk Assessment | PRISM Brain", page_icon="🎯", layout="wide")
@@ -112,15 +112,15 @@ def assessment_overview():
 
     # Create matrix view
     matrix_data = []
+    # Pre-fetch all assessments from backend (backend-aware)
+    all_assessments_overview = get_assessments(st.session_state.current_client_id) or []
+    assessment_lookup = {(a['process_id'], a['risk_id']): a for a in all_assessments_overview}
+
     for proc in processes:
         row = {"Process": proc['custom_name'] or proc['process_name']}
         for risk in risks:
-            # Check if assessment exists
-            assessment = get_assessment(
-                st.session_state.current_client_id,
-                proc['id'],
-                risk['id']
-            )
+            # Check if assessment exists (using backend-aware lookup)
+            assessment = assessment_lookup.get((proc['id'], risk['id']))
             if assessment:
                 exposure = calculate_risk_exposure(
                     proc['criticality_per_day'],
@@ -156,15 +156,14 @@ def guided_assessment():
     currency = client.get('currency', 'EUR')
     symbol = CURRENCY_SYMBOLS.get(currency, '€')
 
-    # Build list of combinations
+    # Build list of combinations (using backend-aware bulk fetch)
+    all_assessments_guided = get_assessments(st.session_state.current_client_id) or []
+    assessment_lookup = {(a['process_id'], a['risk_id']): a for a in all_assessments_guided}
+
     combinations = []
     for proc in processes:
         for risk in risks:
-            existing = get_assessment(
-                st.session_state.current_client_id,
-                proc['id'],
-                risk['id']
-            )
+            existing = assessment_lookup.get((proc['id'], risk['id']))
             combinations.append({
                 'process': proc,
                 'risk': risk,
@@ -378,18 +377,16 @@ def batch_assessment():
     Edit the values directly in the table, then click Save.
     """)
 
-    # Build data for editing - keep IDs in separate mapping
+    # Build data for editing - pre-fetch all assessments from backend (backend-aware)
+    all_assessments_batch = get_assessments(st.session_state.current_client_id) or []
+    assessment_lookup = {(a['process_id'], a['risk_id']): a for a in all_assessments_batch}
+
     data = []
     id_mapping = []  # Store process/risk IDs separately by row index
 
     for proc in processes:
         for risk in risks:
-            existing = get_assessment(
-                st.session_state.current_client_id,
-                proc['id'],
-                risk['id']
-            )
-
+            existing = assessment_lookup.get((proc['id'], risk['id']))
             data.append({
                 'Process': proc['process_name'][:30],
                 'Risk': risk['risk_name'][:30],
