@@ -156,15 +156,15 @@ def guided_assessment():
     currency = client.get('currency', 'EUR')
     symbol = CURRENCY_SYMBOLS.get(currency, '€')
 
-    # Fetch all assessments once (backend-aware) for consistent data
-    all_assessments = get_assessments(st.session_state.current_client_id) or []
-    assessment_lookup = {(a['process_id'], a['risk_id']): a for a in all_assessments}
-
     # Build list of combinations
     combinations = []
     for proc in processes:
         for risk in risks:
-            existing = assessment_lookup.get((proc['id'], risk['id']))
+            existing = get_assessment(
+                st.session_state.current_client_id,
+                proc['id'],
+                risk['id']
+            )
             combinations.append({
                 'process': proc,
                 'risk': risk,
@@ -378,17 +378,17 @@ def batch_assessment():
     Edit the values directly in the table, then click Save.
     """)
 
-    # Fetch all assessments once (backend-aware) for consistent data
-    all_assessments = get_assessments(st.session_state.current_client_id) or []
-    assessment_lookup = {(a['process_id'], a['risk_id']): a for a in all_assessments}
-
     # Build data for editing - keep IDs in separate mapping
     data = []
     id_mapping = []  # Store process/risk IDs separately by row index
 
     for proc in processes:
         for risk in risks:
-            existing = assessment_lookup.get((proc['id'], risk['id']))
+            existing = get_assessment(
+                st.session_state.current_client_id,
+                proc['id'],
+                risk['id']
+            )
 
             data.append({
                 'Process': proc['process_name'][:30],
