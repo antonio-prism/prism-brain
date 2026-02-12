@@ -260,7 +260,7 @@ def assessment_form(process, risk, existing, client):
                 "Vulnerability (%)",
                 min_value=0,
                 max_value=100,
-                value=int(existing['vulnerability'] * 100) if existing else 50,
+                value=int(existing['vulnerability'] * 100) if existing else 0,
                 step=5,
                 key=f"vuln_{process['id']}_{risk['id']}",
                 label_visibility="collapsed"
@@ -274,7 +274,7 @@ def assessment_form(process, risk, existing, client):
                 "Resilience (%)",
                 min_value=0,
                 max_value=100,
-                value=int(existing['resilience'] * 100) if existing else 30,
+                value=int(existing['resilience'] * 100) if existing else 0,
                 step=5,
                 key=f"res_{process['id']}_{risk['id']}",
                 label_visibility="collapsed"
@@ -286,9 +286,9 @@ def assessment_form(process, risk, existing, client):
             st.caption("Days until normal operations resume")
             downtime = st.number_input(
                 "Downtime (days)",
-                min_value=1,
+                min_value=0,
                 max_value=365,
-                value=existing['expected_downtime'] if existing else 5,
+                value=existing['expected_downtime'] if existing else 0,
                 step=1,
                 key=f"down_{process['id']}_{risk['id']}",
                 label_visibility="collapsed"
@@ -393,9 +393,9 @@ def batch_assessment():
             data.append({
                 'Process': proc['process_name'][:30],
                 'Risk': risk['risk_name'][:30],
-                'Vulnerability (%)': int(existing['vulnerability'] * 100) if existing else 50,
-                'Resilience (%)': int(existing['resilience'] * 100) if existing else 30,
-                'Downtime (days)': existing['expected_downtime'] if existing else 5
+                'Vulnerability (%)': int(existing['vulnerability'] * 100) if existing else 0,
+                'Resilience (%)': int(existing['resilience'] * 100) if existing else 0,
+                'Downtime (days)': existing['expected_downtime'] if existing else 0
             })
 
             # Keep track of IDs separately
@@ -414,7 +414,7 @@ def batch_assessment():
             'Risk': st.column_config.TextColumn(disabled=True),
             'Vulnerability (%)': st.column_config.NumberColumn(min_value=0, max_value=100, step=5),
             'Resilience (%)': st.column_config.NumberColumn(min_value=0, max_value=100, step=5),
-            'Downtime (days)': st.column_config.NumberColumn(min_value=1, max_value=365, step=1)
+            'Downtime (days)': st.column_config.NumberColumn(min_value=0, max_value=365, step=1)
         },
         hide_index=True,
         use_container_width=True,
@@ -454,20 +454,16 @@ def main():
         return
 
     # Tabs
-    tab1, tab2, tab3 = st.tabs([
-        "📊 Overview",
-        "🎯 Guided Assessment",
-        "📋 Batch Mode"
+    tab1, tab2 = st.tabs([
+        "📋 Batch Mode",
+        "🎯 Guided Assessment"
     ])
 
     with tab1:
-        assessment_overview()
+        batch_assessment()
 
     with tab2:
         guided_assessment()
-
-    with tab3:
-        batch_assessment()
 
     # Navigation
     st.divider()
