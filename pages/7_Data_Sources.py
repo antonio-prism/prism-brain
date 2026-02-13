@@ -322,21 +322,29 @@ def show_probability_summary():
     """Display summary of current probability calculations."""
     st.subheader("📈 Probability Summary")
 
-    summary = get_probability_summary()
+    # Build probabilities dict from session state if available
+    calc_probs = st.session_state.get('calculated_probabilities', {})
+    if calc_probs:
+        probs_dict = {
+            'probabilities': {k: {'probability': v} for k, v in calc_probs.items()}
+        }
+        summary = get_probability_summary(probs_dict)
+    else:
+        summary = {}
 
     col1, col2, col3 = st.columns(3, gap="medium")
 
     with col1:
         st.metric(
             "Events Analyzed",
-            summary.get("total_events", 905),
+            summary.get("total_risks", 905),
             help="Total number of risk events analyzed"
         )
 
     with col2:
         st.metric(
             "Average Probability",
-            f"{summary.get('avg_probability', 0.0):.1%}",
+            f"{summary.get('average_probability', 0.0):.1%}",
             help="Average probability across all events"
         )
 
