@@ -39,9 +39,28 @@ from modules.external_data import fetch_all_external_data
 
 st.set_page_config(
     page_title="Risk Selection | PRISM Brain",
-    page_icon="⚡",
+    page_icon="\u26A1",
     layout="wide"
 )
+
+
+def _normalize_risks(risks):
+    """Normalize risk database keys for internal use.
+
+    The raw risk_database.json uses keys like Event_ID, Event_Name, Layer_1_Primary, etc.
+    This function adds short aliases (id, name, domain, etc.) so the rest of the code
+    can use simpler key names consistently.
+    """
+    for r in risks:
+        r['id'] = r.get('Event_ID', '')
+        r['name'] = r.get('Event_Name', '')
+        r['domain'] = r.get('Layer_1_Primary', 'Operational')
+        r['description'] = r.get('Event_Description', '')
+        r['is_super_risk'] = r.get('Super_Risk', False)
+        r['default_probability'] = r.get('base_probability', r.get('Baseline_Probability', 0))
+        r['impact_level'] = r.get('base_impact', r.get('Baseline_Impact', 'Medium'))
+        r['risk_name'] = r['name']  # alias used by probability engine
+    return risks
 
 # Initialize session state
 if 'current_client_id' not in st.session_state:
@@ -62,7 +81,7 @@ if 'use_dynamic_probabilities' not in st.session_state:
 
 def client_selector_sidebar():
     """Sidebar for client selection."""
-    st.sidebar.header("🏢 Current Client")
+    st.sidebar.header("\U0001F3E2 Current Client")
     clients = get_all_clients()
 
     if not clients:
@@ -90,15 +109,15 @@ def client_selector_sidebar():
     if st.session_state.current_client_id:
         client = get_client(st.session_state.current_client_id)
         st.sidebar.divider()
-        st.sidebar.markdown(f"**📍 {client.get('location', 'N/A')}**")
-        st.sidebar.markdown(f"🏭 {client.get('industry', 'N/A')}")
-        st.sidebar.markdown(f"📊 {client.get('sectors', 'N/A')}")
+        st.sidebar.markdown(f"**\U0001F4CD {client.get('location', 'N/A')}**")
+        st.sidebar.markdown(f"\U0001F3ED {client.get('industry', 'N/A')}")
+        st.sidebar.markdown(f"\U0001F4CA {client.get('sectors', 'N/A')}")
 
 
 def risk_selection_interface():
     """Main risk selection interface."""
     client = get_client(st.session_state.current_client_id)
-    risks = load_risk_database()
+    risks = _normalize_risks(load_risk_database())
 
     st.markdown(f"## Select Risks for {client['name']}")
     st.markdown(f"Select the risks you want to assess for {client['name']}.")
@@ -132,12 +151,12 @@ def risk_selection_interface():
     # Bulk action buttons
     col1, col2, col3 = st.columns(3)
     with col1:
-        if st.button("✓ Select All Super Risks"):
+        if st.button("\u2713 Select All Super Risks"):
             super_risks = [r['id'] for r in filtered_risks if r.get('is_super_risk', False)]
             st.session_state.selected_risks.update(super_risks)
             st.rerun()
     with col2:
-        if st.button("✗ Clear Selection"):
+        if st.button("\u2717 Clear Selection"):
             st.session_state.selected_risks.clear()
             st.rerun()
     with col3:
@@ -193,7 +212,7 @@ def risk_selection_interface():
             st.write(f"{format_percentage(prob)}")
 
     # Save selected risks
-    if st.button("💾 Save Risk Selection", key="save_risks"):
+    if st.button("\U0001F4BE Save Risk Selection", key="save_risks"):
         for risk_id in st.session_state.selected_risks:
             risk = next((r for r in risks if r['id'] == risk_id), None)
             if risk:
@@ -213,10 +232,10 @@ def risk_selection_interface():
 
 def probability_calculation_interface():
     """Interface for probability calculations."""
-    st.subheader("📊 Calculate Probabilities")
+    st.subheader("\U0001F4CA Calculate Probabilities")
 
     client = get_client(st.session_state.current_client_id)
-    risks = load_risk_database()
+    risks = _normalize_risks(load_risk_database())
     selected_risks = [r for r in risks if r['id'] in st.session_state.selected_risks]
 
     if not selected_risks:
@@ -228,15 +247,15 @@ def probability_calculation_interface():
     with col1:
         st.metric("Selected Risks", len(selected_risks))
     with col2:
-        backend_status = "🟢 Online" if is_backend_online() else "🔴 Offline"
+        backend_status = "\U0001F7E2 Online" if is_backend_online() else "\U0001F534 Offline"
         st.write(f"**Backend Status:** {backend_status}")
     with col3:
-        st.write(f"**Dynamic Probabilities:** {'✓ Enabled' if st.session_state.use_dynamic_probabilities else '✗ Disabled'}")
+        st.write(f"**Dynamic Probabilities:** {'\u2713 Enabled' if st.session_state.use_dynamic_probabilities else '\u2717 Disabled'}")
 
     st.divider()
 
     # Calculate probabilities
-    if st.button("🔄 Calculate All Probabilities"):
+    if st.button("\U0001F504 Calculate All Probabilities"):
         with st.spinner("Calculating probabilities..."):
             try:
                 external_data = fetch_all_external_data(client)
@@ -288,14 +307,14 @@ def probability_calculation_interface():
 
 def save_risks_interface():
     """Interface for saving risk selections."""
-    st.subheader("💾 Save Risk Selections")
+    st.subheader("\U0001F4BE Save Risk Selections")
 
     if not st.session_state.selected_risks:
         st.warning("No risks selected yet. Select risks in the 'Select Risks' tab.")
         return
 
     client = get_client(st.session_state.current_client_id)
-    risks = load_risk_database()
+    risks = _normalize_risks(load_risk_database())
 
     selected_risks = [r for r in risks if r['id'] in st.session_state.selected_risks]
 
@@ -320,7 +339,7 @@ def save_risks_interface():
 
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("✓ Confirm & Save Risks"):
+        if st.button("\u2713 Confirm & Save Risks"):
             for risk in selected_risks:
                 add_client_risk(
                     st.session_state.current_client_id,
@@ -336,23 +355,23 @@ def save_risks_interface():
             st.success(f"Saved {len(selected_risks)} risks to database!")
 
     with col2:
-        if st.button("← Back to Risk Selection"):
+        if st.button("\u2190 Back to Risk Selection"):
             st.rerun()
 
 
 def import_export_risks():
     """Interface for importing and exporting risk selections."""
-    st.subheader("📥 Import / Export Risk Selections")
+    st.subheader("\U0001F4E5 Import / Export Risk Selections")
 
     if not st.session_state.current_client_id:
         st.warning("Select a client first")
         return
 
     client = get_client(st.session_state.current_client_id)
-    risks = load_risk_database()
+    risks = _normalize_risks(load_risk_database())
 
     # Download section
-    st.markdown("### 📥 Download Risk Selection")
+    st.markdown("### \U0001F4E5 Download Risk Selection")
 
     selected_risks = [r for r in risks if r['id'] in st.session_state.selected_risks]
 
@@ -380,7 +399,7 @@ def import_export_risks():
         output.seek(0)
 
         st.download_button(
-            label="⬇️ Download Risk Selection (XLSX)",
+            label="\u2B07\uFE0F Download Risk Selection (XLSX)",
             data=output.getvalue(),
             file_name=f"{client['name']}_Risk_Selection.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -391,7 +410,7 @@ def import_export_risks():
     st.divider()
 
     # Upload section
-    st.markdown("### 📤 Upload Risk Selection")
+    st.markdown("### \U0001F4E4 Upload Risk Selection")
 
     uploaded_file = st.file_uploader(
         "Select an XLSX file to upload risk selections",
@@ -414,7 +433,7 @@ def import_export_risks():
             st.write(f"Found {len(selected_from_upload)} selected risks in file")
 
             if selected_from_upload:
-                if st.button("✓ Import & Update Selection"):
+                if st.button("\u2713 Import & Update Selection"):
                     st.session_state.selected_risks = selected_from_upload
                     st.success("Risk selection updated!")
                     st.rerun()
@@ -430,28 +449,28 @@ def main():
     client_selector_sidebar()
 
     if not st.session_state.current_client_id:
-        st.warning("👈 Select a client from the sidebar")
+        st.warning("\U0001F448 Select a client from the sidebar")
         return
 
     # Header with navigation
-    st.title("⚡ Risk Selection")
+    st.title("\u26A1 Risk Selection")
 
     col1, col2, col3 = st.columns([1, 2, 1])
     with col1:
-        if st.button("← Process Criticality"):
+        if st.button("\u2190 Process Criticality"):
             st.switch_page("pages/2_Process_Criticality.py")
     with col3:
-        if st.button("Next: Assessment →"):
+        if st.button("Next: Assessment \u2192"):
             st.switch_page("pages/4_Risk_Assessment.py")
 
     st.divider()
 
     # Tabs
     tab1, tab2, tab3, tab4 = st.tabs([
-        "📊 Probabilities",
-        "🎯 Select Risks",
-        "💾 Save",
-        "📥 Import / Export"
+        "\U0001F4CA Probabilities",
+        "\U0001F3AF Select Risks",
+        "\U0001F4BE Save",
+        "\U0001F4E5 Import / Export"
     ])
 
     with tab1:
