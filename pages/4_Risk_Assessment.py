@@ -1,11 +1,11 @@
-"""
-PRISM Brain - Risk Assessment Module
+""" PRISM Brain - Risk Assessment Module
 =====================================
 Input vulnerability, resilience, and downtime for each process-risk combination.
 """
 
 import streamlit as st
 import pandas as pd
+import io
 import sys
 from pathlib import Path
 
@@ -14,18 +14,32 @@ sys.path.insert(0, str(APP_DIR))
 
 from utils.constants import CURRENCY_SYMBOLS
 from utils.helpers import (
-    get_domain_color, get_domain_icon, format_currency, format_percentage,
-    get_risk_level, get_risk_level_color
+    get_domain_color,
+    get_domain_icon,
+    format_currency,
+    format_percentage,
+    get_risk_level,
+    get_risk_level_color
 )
 from modules.database import (
-    get_client, get_all_clients, get_client_processes, get_client_risks,
-    get_assessments, save_assessment, calculate_risk_exposure
+    get_client,
+    get_all_clients,
+    get_client_processes,
+    get_client_risks,
+    get_assessments,
+    save_assessment,
+    calculate_risk_exposure
 )
 
-st.set_page_config(page_title="Risk Assessment | PRISM Brain", page_icon="🎯", layout="wide")
+st.set_page_config(
+    page_title="Risk Assessment | PRISM Brain",
+    page_icon="🎯",
+    layout="wide"
+)
 
 if 'current_client_id' not in st.session_state:
     st.session_state.current_client_id = None
+
 if 'assessment_mode' not in st.session_state:
     st.session_state.assessment_mode = 'guided'  # 'guided' or 'table'
 
@@ -33,20 +47,20 @@ if 'assessment_mode' not in st.session_state:
 def client_selector_sidebar():
     """Sidebar for client selection and progress."""
     st.sidebar.header("🏢 Current Client")
-
     clients = get_all_clients()
+
     if not clients:
         st.sidebar.warning("No clients created")
         return
 
     client_names = {c['id']: c['name'] for c in clients}
-
     selected_id = st.sidebar.selectbox(
         "Select Client",
         options=list(client_names.keys()),
         format_func=lambda x: client_names[x],
         index=list(client_names.keys()).index(st.session_state.current_client_id)
-              if st.session_state.current_client_id in client_names else 0
+        if st.session_state.current_client_id in client_names
+        else 0
     )
 
     if selected_id != st.session_state.current_client_id:
@@ -88,7 +102,6 @@ def assessment_overview():
     assessments = get_assessments(st.session_state.current_client_id)
 
     col1, col2, col3, col4 = st.columns(4)
-
     with col1:
         st.metric("Processes", len(processes))
     with col2:
@@ -112,15 +125,18 @@ def assessment_overview():
 
     # Create matrix view
     matrix_data = []
+
     # Pre-fetch all assessments from backend (backend-aware)
     all_assessments_overview = get_assessments(st.session_state.current_client_id) or []
     assessment_lookup = {(a['process_id'], a['risk_id']): a for a in all_assessments_overview}
 
     for proc in processes:
         row = {"Process": proc['custom_name'] or proc['process_name']}
+
         for risk in risks:
             # Check if assessment exists (using backend-aware lookup)
             assessment = assessment_lookup.get((proc['id'], risk['id']))
+
             if assessment:
                 exposure = calculate_risk_exposure(
                     proc['criticality_per_day'],
@@ -132,6 +148,7 @@ def assessment_overview():
                 row[risk['risk_name'][:20]] = f"✅ {format_currency(exposure, client['currency'])}"
             else:
                 row[risk['risk_name'][:20]] = "⬜ Pending"
+
         matrix_data.append(row)
 
     df_matrix = pd.DataFrame(matrix_data)
@@ -192,8 +209,7 @@ def guided_assessment():
             st.info(f"{len(pending)} combinations pending assessment")
 
             # Select next combination
-            options = [f"{c['process']['process_name']} × {c['risk']['risk_name']}"
-                      for c in pending]
+            options = [f"{c['process']['process_name']} × {c['risk']['risk_name']}" for c in pending]
             selected_idx = st.selectbox(
                 "Select combination to assess",
                 options=range(len(options)),
@@ -208,8 +224,7 @@ def guided_assessment():
         if not completed:
             st.info("No assessments completed yet")
         else:
-            options = [f"{c['process']['process_name']} × {c['risk']['risk_name']}"
-                      for c in completed]
+            options = [f"{c['process']['process_name']} × {c['risk']['risk_name']}" for c in completed]
             selected_idx = st.selectbox(
                 "Select combination to edit",
                 options=range(len(options)),
@@ -219,8 +234,7 @@ def guided_assessment():
 
             if selected_idx is not None:
                 combo = completed[selected_idx]
-                assessment_form(combo['process'], combo['risk'],
-                               combo['existing'], client)
+                assessment_form(combo['process'], combo['risk'], combo['existing'], client)
 
 
 def assessment_form(process, risk, existing, client):
@@ -232,6 +246,7 @@ def assessment_form(process, risk, existing, client):
 
     # Process info
     col1, col2 = st.columns(2)
+
     with col1:
         st.markdown("### 📋 Process")
         st.write(f"**{process['process_name']}**")
@@ -241,7 +256,11 @@ def assessment_form(process, risk, existing, client):
         st.markdown("### ⚠️ Risk")
         domain_color = get_domain_color(risk['domain'])
         st.markdown(f"**{risk['risk_name']}**")
-        st.markdown(f"<span style='background-color:{domain_color}20; padding:2px 8px; border-radius:4px;'>{get_domain_icon(risk['domain'])} {risk['domain']}</span>", unsafe_allow_html=True)
+        st.markdown(
+            f"<span style='background-color:{domain_color}20; padding:2px 8px; border-radius:4px;'>"
+            f"{get_domain_icon(risk['domain'])} {risk['domain']}</span>",
+            unsafe_allow_html=True
+        )
         st.write(f"Probability: {format_percentage(risk['probability'])}")
 
     st.divider()
@@ -303,7 +322,6 @@ def assessment_form(process, risk, existing, client):
 
         # Preview calculation
         st.markdown("### 💰 Calculated Exposure")
-
         exposure = calculate_risk_exposure(
             process['criticality_per_day'],
             vulnerability / 100,
@@ -335,13 +353,11 @@ def assessment_form(process, risk, existing, client):
 
             **Calculation:**
             ```
-            {symbol}{process['criticality_per_day']:,.0f} × {vulnerability/100:.2f} × {(100-resilience)/100:.2f} × {downtime} × {risk['probability']:.2f}
-            = {symbol}{exposure:,.0f}/year
+            {symbol}{process['criticality_per_day']:,.0f} × {vulnerability/100:.2f} × {(100-resilience)/100:.2f} × {downtime} × {risk['probability']:.2f} = {symbol}{exposure:,.0f}/year
             ```
             """)
 
-        submitted = st.form_submit_button("💾 Save Assessment", type="primary",
-                                          use_container_width=True)
+        submitted = st.form_submit_button("💾 Save Assessment", type="primary", use_container_width=True)
 
         if submitted:
             save_assessment(
@@ -373,8 +389,7 @@ def batch_assessment():
         return
 
     st.markdown("""
-    Enter assessments in bulk using the table below.
-    Edit the values directly in the table, then click Save.
+    Enter assessments in bulk using the table below. Edit the values directly in the table, then click Save.
     """)
 
     # Build data for editing - pre-fetch all assessments from backend (backend-aware)
@@ -420,9 +435,11 @@ def batch_assessment():
 
     if st.button("💾 Save All Assessments", type="primary", use_container_width=True):
         saved_count = 0
+
         for idx, row in edited_df.iterrows():
             # Get IDs from our separate mapping using the row index
             ids = id_mapping[idx]
+
             save_assessment(
                 client_id=st.session_state.current_client_id,
                 process_id=ids['proc_id'],
@@ -433,8 +450,132 @@ def batch_assessment():
                 notes=""
             )
             saved_count += 1
+
         st.success(f"✅ Saved {saved_count} assessments!")
         st.rerun()  # Refresh to show updated values
+
+
+def import_export_assessments():
+    """Import/Export assessments via XLSX."""
+    st.subheader("📥 Import / Export")
+
+    if not st.session_state.current_client_id:
+        st.warning("Please select a client to continue")
+        return
+
+    client = get_client(st.session_state.current_client_id)
+    processes = get_client_processes(st.session_state.current_client_id)
+    risks = get_client_risks(st.session_state.current_client_id, prioritized_only=True)
+    assessments = get_assessments(st.session_state.current_client_id) or []
+
+    if not processes or not risks:
+        st.warning("Please ensure you have selected both processes and risks.")
+        return
+
+    currency = client.get('currency', 'EUR')
+
+    # Create tabs for download and upload
+    col1, col2 = st.columns(2)
+
+    # Download section
+    with col1:
+        st.markdown("### 📥 Download Template")
+        st.markdown("Export current assessments or download a blank template to fill in.")
+
+        if st.button("📥 Download XLSX Template", use_container_width=True):
+            # Build export data
+            assessment_lookup = {(a['process_id'], a['risk_id']): a for a in assessments}
+            export_data = []
+
+            for proc in processes:
+                for risk in risks:
+                    existing = assessment_lookup.get((proc['id'], risk['id']))
+                    export_data.append({
+                        'Process Name': proc['process_name'],
+                        'Process ID': proc['id'],
+                        'Risk Name': risk['risk_name'],
+                        'Risk ID': risk['id'],
+                        'Criticality/Day': proc['criticality_per_day'],
+                        'Probability (%)': risk['probability'] * 100,
+                        'Vulnerability (%)': int(existing['vulnerability'] * 100) if existing else '',
+                        'Resilience (%)': int(existing['resilience'] * 100) if existing else '',
+                        'Downtime (days)': existing['expected_downtime'] if existing else ''
+                    })
+
+            df_export = pd.DataFrame(export_data)
+
+            # Create Excel file in memory
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                df_export.to_excel(writer, sheet_name='Assessments', index=False)
+
+            output.seek(0)
+
+            st.download_button(
+                label="⬇️ Download XLSX",
+                data=output.getvalue(),
+                file_name=f"risk_assessments_{st.session_state.current_client_id}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
+
+    # Upload section
+    with col2:
+        st.markdown("### 📤 Upload XLSX")
+        st.markdown("Upload a completed assessment file to import values.")
+
+        uploaded_file = st.file_uploader(
+            "Choose XLSX file",
+            type=["xlsx", "xls"],
+            label_visibility="collapsed"
+        )
+
+        if uploaded_file:
+            try:
+                df_import = pd.read_excel(uploaded_file)
+
+                # Validate required columns
+                required_cols = ['Process ID', 'Risk ID', 'Vulnerability (%)', 'Resilience (%)', 'Downtime (days)']
+                missing_cols = [col for col in required_cols if col not in df_import.columns]
+
+                if missing_cols:
+                    st.error(f"Missing columns: {', '.join(missing_cols)}")
+                else:
+                    st.markdown("### Preview of imported data")
+                    st.dataframe(df_import, use_container_width=True)
+
+                    if st.button("💾 Save Imported Assessments", type="primary", use_container_width=True):
+                        saved_count = 0
+                        error_count = 0
+
+                        for idx, row in df_import.iterrows():
+                            try:
+                                process_id = row['Process ID']
+                                risk_id = row['Risk ID']
+                                vulnerability = float(row['Vulnerability (%)']) / 100 if pd.notna(row['Vulnerability (%)']) else 0
+                                resilience = float(row['Resilience (%)']) / 100 if pd.notna(row['Resilience (%)']) else 0
+                                downtime = int(row['Downtime (days)']) if pd.notna(row['Downtime (days)']) else 0
+
+                                save_assessment(
+                                    client_id=st.session_state.current_client_id,
+                                    process_id=process_id,
+                                    risk_id=risk_id,
+                                    vulnerability=vulnerability,
+                                    resilience=resilience,
+                                    expected_downtime=downtime,
+                                    notes=""
+                                )
+                                saved_count += 1
+                            except Exception as e:
+                                error_count += 1
+                                st.warning(f"Row {idx + 2}: {str(e)}")
+
+                        st.success(f"✅ Imported {saved_count} assessments!")
+                        if error_count > 0:
+                            st.warning(f"⚠️ {error_count} rows had errors")
+                        st.rerun()
+
+            except Exception as e:
+                st.error(f"Error reading file: {str(e)}")
 
 
 def main():
@@ -451,9 +592,10 @@ def main():
         return
 
     # Tabs
-    tab1, tab2 = st.tabs([
+    tab1, tab2, tab3 = st.tabs([
         "📋 Batch Mode",
-        "🎯 Guided Assessment"
+        "🎯 Guided Assessment",
+        "📥 Import / Export"
     ])
 
     with tab1:
@@ -462,13 +604,16 @@ def main():
     with tab2:
         guided_assessment()
 
+    with tab3:
+        import_export_assessments()
+
     # Navigation
     st.divider()
     col1, col2, col3 = st.columns([1, 2, 1])
 
     with col1:
-        if st.button("← Prioritization"):
-            st.switch_page("pages/3_Prioritization.py")
+        if st.button("← Risk Selection"):
+            st.switch_page("pages/3_Risk_Selection.py")
 
     with col3:
         assessments = get_assessments(st.session_state.current_client_id)
